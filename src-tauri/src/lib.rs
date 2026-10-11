@@ -1423,6 +1423,7 @@ pub fn run() {
             commands::get_skills_migration_result,
             commands::get_app_config_path,
             commands::open_app_config_folder,
+            commands::reveal_app_log_file,
             commands::get_claude_common_config_snippet,
             commands::set_claude_common_config_snippet,
             commands::get_common_config_snippet,
@@ -1623,6 +1624,7 @@ pub fn run() {
             commands::set_proxy_stack_member,
             commands::adopt_codex_stack_catalog,
             commands::restart_codex_app_server_daemon,
+            commands::acknowledge_codex_stale_clients,
             // Proxy failover commands
             commands::get_provider_health,
             commands::reset_circuit_breaker,
