@@ -783,6 +783,29 @@ fn mcode_installer_update_command(install_root: &str) -> String {
     )
 }
 
+/// 重跑 Kimi Code 官方 installer 升级原生安装那一处。显式传 `KIMI_INSTALL_DIR`，
+/// 保证写回探测到的目录（installer 覆盖 `<dir>/bin/kimi`），而不是默认的 `~/.kimi-code`。
+#[cfg(not(target_os = "windows"))]
+fn kimi_installer_update_command(install_root: &str) -> String {
+    format!(
+        "KIMI_INSTALL_DIR={} {KIMI_INSTALL_UNIX}",
+        shell_single_quote(install_root)
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn kimi_installer_update_command(install_root: &str) -> String {
+    // PowerShell 单引号字面量里 `'` 写作 `''`；整段经 EncodedCommand 传入，不经 cmd 解析。
+    let script = format!(
+        "$env:KIMI_INSTALL_DIR = '{}'; {KIMI_INSTALL_WINDOWS_SCRIPT}",
+        install_root.replace('\'', "''")
+    );
+    format!(
+        "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand {}",
+        powershell_encoded_command(&script)
+    )
+}
+
 /// Codex 官方独立安装器（`install.sh` / `install.ps1`）装出的一处安装。
 ///
 /// 布局（2026-09 实测 install.sh、读 install.ps1）：发布包在
@@ -1920,7 +1943,7 @@ fn build_provider_command_line(shell: &str, launch_command: &str, cwd: Option<&P
         .map(|dir| {
             format!(
                 "cd {} && {}",
-                shell_single_quote(&dir.to_string_lossy()),
+                user_shell_quote(shell, &dir.to_string_lossy()),
                 launch_command
             )
         })
@@ -3557,6 +3580,68 @@ fn mcode_script_install_root(
     })
 }
 
+/// Kimi Code 的 `upgrade` 子命令 0.43.0 起才有 `-y, --yes`。更早的版本把 `--yes` 当成主命令
+/// 的全局选项吞掉，非 TTY（静默 lifecycle 正是如此）下只打印手动升级提示就 exit 0，
+/// `kimi upgrade --yes || <fallback>` 的兜底永不触发，用户看到「版本没有变化」（#9032）。
+const KIMI_UPGRADE_YES_MIN_VERSION: &str = "0.43.0";
+
+fn kimi_upgrade_ignores_yes(version: Option<&str>) -> bool {
+    version.and_then(|v| compare_semver(v, KIMI_UPGRADE_YES_MIN_VERSION))
+        == Some(std::cmp::Ordering::Less)
+}
+
+/// Kimi Code 官方 installer 的布局：两平台都是 `<KIMI_INSTALL_DIR>/bin/kimi[.exe]`
+/// 原生二进制。npm 版的真身在 `node_modules` 下（Windows 入口是 `kimi.cmd`），不算。
+/// 先看真身：POSIX 用户自建的软链（如 `~/.local/bin/kimi`）指回安装目录时，installer
+/// 必须写回真身所在的那处；Windows 的真身是 canonicalize 出的 `\\?\` verbatim 路径，
+/// 交给 installer 前还原。纯字符串、不碰 fs。
+fn kimi_native_install_root(bin_path: &str, real_target: &str) -> Option<String> {
+    let normalized_real = real_target.replace('\\', "/").to_ascii_lowercase();
+    if normalized_real.contains("/node_modules/") {
+        return None;
+    }
+    #[cfg(not(target_os = "windows"))]
+    if is_brew_managed_path(real_target) {
+        return None;
+    }
+    let real = match real_target.strip_prefix(r"\\?\UNC\") {
+        Some(unc) => format!(r"\\{unc}"),
+        None => real_target
+            .strip_prefix(r"\\?\")
+            .unwrap_or(real_target)
+            .to_string(),
+    };
+    let root = [real.as_str(), bin_path].into_iter().find_map(|path| {
+        if !matches!(last_path_segment_lower(path).as_str(), "kimi" | "kimi.exe") {
+            return None;
+        }
+        let bin_dir = parent_dir(path);
+        if last_path_segment_lower(&bin_dir) != "bin" {
+            return None;
+        }
+        let root = parent_dir(&bin_dir);
+        (!root.is_empty()).then_some(root)
+    });
+    root
+}
+
+/// 旧版 Kimi Code（见 `KIMI_UPGRADE_YES_MIN_VERSION`）的升级命令：跳过会假成功的
+/// `kimi upgrade --yes`。包管理器认得的安装（npm / Volta / bun / Homebrew）走锚定的包管理器；
+/// 先查它，因为 Volta 的 `bin/kimi[.exe]` shim 不解析到 `node_modules`，会被误认成原生
+/// 布局、让 installer 覆盖 shim。其余原生安装重跑官方 installer。都认不出时返回 None，
+/// 交回普通锚定。
+fn kimi_legacy_update_command(bin_path: &str, real_target: &str) -> Option<String> {
+    #[cfg(not(target_os = "windows"))]
+    let package_command =
+        package_manager_anchored_command_from_paths("kimi", bin_path, real_target);
+    #[cfg(target_os = "windows")]
+    let package_command = package_manager_anchored_command_from_paths("kimi", bin_path);
+    package_command.or_else(|| {
+        kimi_native_install_root(bin_path, real_target)
+            .map(|root| kimi_installer_update_command(&root))
+    })
+}
+
 /// 按 installer 写在 `<root>/install.json` 的回执认领安装目录——自定义
 /// `MCODE_INSTALL_DIR` 的目录名不固定，只能靠它（schema 1/2 都有 `product` /
 /// `updateOwner` / `prefix`）。返回回执里的 `prefix` 原值：installer 以
@@ -4690,6 +4775,12 @@ fn installs_anchored_command(tool: &str, installs: &[ToolInstallation]) -> Optio
             return Some(mcode_installer_update_command(&root));
         }
     }
+    // 版本号来自 `--version` 探测，所以放在这里而不是纯路径的 `anchored_command_from_paths`。
+    if tool == "kimi" && kimi_upgrade_ignores_yes(inst.version.as_deref()) {
+        if let Some(cmd) = kimi_legacy_update_command(&inst.path, &real) {
+            return Some(cmd);
+        }
+    }
     anchored_command_from_paths(tool, &inst.path, &real)
 }
 
@@ -5036,9 +5127,12 @@ pub async fn open_provider_terminal(
     #[allow(non_snake_case)] providerId: String,
     cwd: Option<String>,
     #[allow(non_snake_case)] skipPermissions: Option<bool>,
+    #[allow(non_snake_case)] extraArgs: Option<String>,
 ) -> Result<bool, String> {
     let app_type = AppType::from_str(&app).map_err(|e| e.to_string())?;
     let launch_cwd = resolve_launch_cwd(cwd)?;
+    // 先拆参数：填错了直接报错，不必等到切完 agy 登录、写完临时文件。
+    let extra_args = split_launch_args(extraArgs.as_deref().unwrap_or_default())?;
 
     // 获取提供商配置
     let providers = ProviderService::list(state.inner(), app_type.clone())
@@ -5082,6 +5176,12 @@ pub async fn open_provider_terminal(
     };
     if skipPermissions == Some(true) {
         launch.skip_permissions();
+    }
+    if let Err(e) = launch.append_user_args(extra_args) {
+        for file in &launch.cleanup {
+            let _ = std::fs::remove_file(file);
+        }
+        return Err(e);
     }
 
     launch_provider_terminal(&launch, launch_cwd.as_deref())
@@ -5203,6 +5303,87 @@ impl ProviderLaunch {
         self.batch_command.push(' ');
         self.batch_command.push_str(flag);
     }
+
+    /// 用户在「打开终端」里填的附加参数，接在 CC Switch 生成的参数后面，同样只给这一次。
+    /// Windows 上每个参数经 .bat 变量传、用引号包住，cmd 的 `&`、`|` 之类不会接出别的命令。
+    fn append_user_args(&mut self, args: Vec<String>) -> Result<(), String> {
+        // Codex 的启动行带 `call`：`%` 会再展开一遍、引号里的 `^` 会加倍，和 `-c` 值同一条限制。
+        if cfg!(target_os = "windows") && args.iter().any(|arg| arg.contains(['"', '%', '^'])) {
+            return Err("附加参数里有 Windows 终端传不过去的字符（\" % ^）".to_string());
+        }
+        for (arg, var) in args.into_iter().zip(USER_ARG_BATCH_VARS) {
+            // 程序按 Windows 的规则拆命令行：收尾引号前的反斜杠要成对，否则 `C:\work\` 会把
+            // 引号当成内容吞掉。
+            let trailing = arg.len() - arg.trim_end_matches('\\').len();
+            let quoted_value = format!("{arg}{}", "\\".repeat(trailing));
+            self.batch_command.push_str(&format!(" \"%{var}%\""));
+            self.batch_vars.push((var, quoted_value));
+            self.args.push(arg);
+        }
+        Ok(())
+    }
+}
+
+/// 附加参数在 .bat 里经这些变量传，也是附加参数的个数上限（各平台一样）。
+const USER_ARG_BATCH_VARS: [&str; 16] = [
+    "CC_SWITCH_ARG0",
+    "CC_SWITCH_ARG1",
+    "CC_SWITCH_ARG2",
+    "CC_SWITCH_ARG3",
+    "CC_SWITCH_ARG4",
+    "CC_SWITCH_ARG5",
+    "CC_SWITCH_ARG6",
+    "CC_SWITCH_ARG7",
+    "CC_SWITCH_ARG8",
+    "CC_SWITCH_ARG9",
+    "CC_SWITCH_ARG10",
+    "CC_SWITCH_ARG11",
+    "CC_SWITCH_ARG12",
+    "CC_SWITCH_ARG13",
+    "CC_SWITCH_ARG14",
+    "CC_SWITCH_ARG15",
+];
+
+/// 把附加参数按空白拆开：单引号或双引号括起来的部分算同一个参数（引号本身去掉），没有
+/// 反斜杠转义（Windows 路径里全是反斜杠）。只拆成参数，不经 shell，`;`、`&`、`|` 原样交给 CLI。
+fn split_launch_args(input: &str) -> Result<Vec<String>, String> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut in_word = false;
+    let mut quote: Option<char> = None;
+    for c in input.chars() {
+        if c.is_control() && !(quote.is_none() && c.is_whitespace()) {
+            return Err("附加参数里不能有换行等控制字符".to_string());
+        }
+        match quote {
+            Some(q) if c == q => quote = None,
+            Some(_) => current.push(c),
+            None if c == '"' || c == '\'' => {
+                quote = Some(c);
+                in_word = true;
+            }
+            None if c.is_whitespace() => {
+                if in_word {
+                    args.push(std::mem::take(&mut current));
+                    in_word = false;
+                }
+            }
+            None => {
+                current.push(c);
+                in_word = true;
+            }
+        }
+    }
+    if quote.is_some() {
+        return Err("附加参数里的引号没有配对".to_string());
+    }
+    if in_word {
+        args.push(current);
+    }
+    if args.len() > USER_ARG_BATCH_VARS.len() {
+        return Err(format!("附加参数最多 {} 个", USER_ARG_BATCH_VARS.len()));
+    }
+    Ok(args)
 }
 
 /// Codex 的 `-c` 值在 .bat 里经这些变量传（值里可能有 `&` 之类 cmd 的特殊字符）。
@@ -5551,7 +5732,15 @@ fn shell_word(value: &str) -> String {
 /// 交给用户 shell 执行的启动命令。有环境变量时经 `env` 设置或清除，值从启动脚本读进来的
 /// `CC_SWITCH_LAUNCH_ENV_<n>` 取，不出现在命令行里。
 #[cfg_attr(windows, allow(dead_code))]
+#[cfg(test)]
 fn unix_launch_command(launch: &ProviderLaunch) -> String {
+    unix_launch_command_in(launch, "/bin/sh")
+}
+
+/// 同上，参数按用户 shell 的规则加引号：这条命令由用户 shell 解析（见
+/// `build_provider_command_line`），附加参数又是用户随手填的文本。
+#[cfg_attr(windows, allow(dead_code))]
+fn unix_launch_command_in(launch: &ProviderLaunch, shell: &str) -> String {
     let mut words = Vec::new();
     if !launch.env.is_empty() {
         words.push("env".to_string());
@@ -5569,7 +5758,7 @@ fn unix_launch_command(launch: &ProviderLaunch) -> String {
         }
     }
     words.push(launch.program.to_string());
-    words.extend(launch.args.iter().map(|arg| shell_word(arg)));
+    words.extend(launch.args.iter().map(|arg| user_shell_word(shell, arg)));
     words.join(" ")
 }
 
@@ -5625,7 +5814,7 @@ fn build_unix_launcher_script(
     }
     script.push_str(&build_provider_command_line(
         shell,
-        &unix_launch_command(launch),
+        &unix_launch_command_in(launch, shell),
         cwd,
     ));
     script.push('\n');
@@ -6166,8 +6355,9 @@ fn launch_windows_terminal(launch: &ProviderLaunch, cwd: Option<&Path>) -> Resul
         .collect();
 
     // setlocal 段里设的变量（含 Key）在程序退出后随 endlocal 撤掉，不留在这个 cmd 会话里。
+    // 注册表里开了延迟展开的机器上，值里的 `!名字!` 会被替换：这一段显式关掉。
     let content = format!(
-        "@echo off\r\n{cwd_command}setlocal\r\n{set_lines}echo {title}\r\n{command}\r\nendlocal\r\n{cleanup}del \"%~f0\" >nul 2>&1\r\n",
+        "@echo off\r\n{cwd_command}setlocal DisableDelayedExpansion\r\n{set_lines}echo {title}\r\n{command}\r\nendlocal\r\n{cleanup}del \"%~f0\" >nul 2>&1\r\n",
         title = escape_windows_batch_value(launch.title),
         command = launch.batch_command,
     );
@@ -6209,6 +6399,34 @@ fn launch_windows_terminal(launch: &ProviderLaunch, cwd: Option<&Path>) -> Resul
 #[cfg_attr(windows, allow(dead_code))]
 fn shell_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+/// fish 的单引号里 `\'` 和 `\\` 仍是转义，POSIX 的 `'"'"'` 写法会让引号错位、接出别的命令。
+#[cfg_attr(windows, allow(dead_code))]
+fn is_fish_shell(shell: &str) -> bool {
+    shell.rsplit('/').next().unwrap_or(shell) == "fish"
+}
+
+/// 交给用户 shell（而不是启动脚本的 sh）解析的一段文本加引号。
+#[cfg_attr(windows, allow(dead_code))]
+fn user_shell_quote(shell: &str, value: &str) -> String {
+    if is_fish_shell(shell) {
+        format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'"))
+    } else {
+        shell_single_quote(value)
+    }
+}
+
+/// `shell_word` 的用户 shell 版本：只含安全字符时原样写。
+#[cfg_attr(windows, allow(dead_code))]
+fn user_shell_word(shell: &str, value: &str) -> String {
+    let word = shell_word(value);
+    // zsh 把开头的 `=名字` 展开成命令路径（`=sh` → `/bin/sh`），找不到还会直接报错。
+    if word == value && !value.starts_with('=') {
+        word
+    } else {
+        user_shell_quote(shell, value)
+    }
 }
 
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
@@ -7088,6 +7306,87 @@ mod tests {
     }
 
     #[test]
+    fn split_launch_args_groups_quoted_values_without_a_shell() {
+        assert_eq!(split_launch_args("  ").unwrap(), Vec::<String>::new());
+        assert_eq!(
+            split_launch_args(
+                "--debug --append-system-prompt \"be brief; ok\" --mcp-config 'C:\\a b\\mcp.json'\n-x=\"\""
+            )
+            .unwrap(),
+            vec![
+                "--debug",
+                "--append-system-prompt",
+                "be brief; ok",
+                "--mcp-config",
+                "C:\\a b\\mcp.json",
+                "-x=",
+            ]
+        );
+        // 引号可以接在词中间，引号里也能放另一种引号
+        assert_eq!(
+            split_launch_args("--name=\"it's\" ''").unwrap(),
+            vec!["--name=it's", ""]
+        );
+        assert!(split_launch_args("--append-system-prompt \"oops").is_err());
+        assert!(split_launch_args("\"line\nbreak\"").is_err());
+        let too_many = vec!["-v"; USER_ARG_BATCH_VARS.len() + 1].join(" ");
+        assert!(split_launch_args(&too_many).is_err());
+    }
+
+    #[test]
+    fn fish_gets_its_own_quoting_for_user_text() {
+        let mut launch = claude_account_terminal_launch(None);
+        launch.env.clear();
+        launch
+            .append_user_args(vec!["x\\'; printf INJECTED; #".into(), "C:\\work\\".into()])
+            .unwrap();
+        assert_eq!(
+            unix_launch_command_in(&launch, "/opt/homebrew/bin/fish"),
+            "claude 'x\\\\\\'; printf INJECTED; #' 'C:\\\\work\\\\'"
+        );
+        assert_eq!(
+            unix_launch_command_in(&launch, "/bin/zsh"),
+            "claude 'x\\'\"'\"'; printf INJECTED; #' 'C:\\work\\'"
+        );
+        // .bat 里收尾的反斜杠成对，Unix 参数保持原样
+        assert_eq!(launch.batch_vars[1].1, "C:\\work\\\\");
+        assert_eq!(launch.args[1], "C:\\work\\");
+        assert_eq!(
+            build_provider_command_line("/usr/bin/fish", "claude", Some(Path::new("/tmp/a\\'b"))),
+            "'/usr/bin/fish' -ic 'cd '\"'\"'/tmp/a\\\\\\'\"'\"'b'\"'\"' && claude'"
+        );
+        let mut launch = claude_account_terminal_launch(None);
+        launch.env.clear();
+        launch.append_user_args(vec!["=sh".into()]).unwrap();
+        assert_eq!(unix_launch_command_in(&launch, "/bin/zsh"), "claude '=sh'");
+    }
+
+    #[test]
+    fn user_args_follow_the_generated_args_and_pass_through_batch_vars() {
+        let mut launch = claude_account_terminal_launch(None);
+        launch.env.clear();
+        launch.skip_permissions();
+        launch
+            .append_user_args(vec!["--append-system-prompt".into(), "a & b | c".into()])
+            .unwrap();
+        assert_eq!(
+            unix_launch_command(&launch),
+            "claude --dangerously-skip-permissions --append-system-prompt 'a & b | c'"
+        );
+        assert_eq!(
+            launch.batch_command,
+            "claude --dangerously-skip-permissions \"%CC_SWITCH_ARG0%\" \"%CC_SWITCH_ARG1%\""
+        );
+        assert_eq!(
+            launch.batch_vars,
+            vec![
+                ("CC_SWITCH_ARG0", "--append-system-prompt".to_string()),
+                ("CC_SWITCH_ARG1", "a & b | c".to_string()),
+            ]
+        );
+    }
+
+    #[test]
     fn skip_permissions_appends_the_flag_on_every_platform() {
         let mut launch = claude_account_terminal_launch(None);
         launch.env.clear();
@@ -7577,6 +7876,101 @@ mod tests {
         .unwrap();
         assert_eq!(update, format!("kimi upgrade --yes || {posix}"));
         assert!(!update.contains("npm"));
+    }
+
+    #[test]
+    fn kimi_native_install_root_follows_the_installer_layout() {
+        assert_eq!(
+            kimi_native_install_root(
+                "/home/me/.kimi-code/bin/kimi",
+                "/home/me/.kimi-code/bin/kimi"
+            )
+            .as_deref(),
+            Some("/home/me/.kimi-code")
+        );
+        // 软链指回安装目录时写回真身那处。
+        assert_eq!(
+            kimi_native_install_root("/home/me/.local/bin/kimi", "/opt/kimi/bin/kimi").as_deref(),
+            Some("/opt/kimi")
+        );
+        assert_eq!(
+            kimi_native_install_root(
+                r"C:\Users\sc\.kimi-code\bin\kimi.exe",
+                r"\\?\C:\Users\sc\.kimi-code\bin\kimi.exe"
+            )
+            .as_deref(),
+            Some(r"C:\Users\sc\.kimi-code")
+        );
+        // npm 版不归 installer 管。
+        assert_eq!(
+            kimi_native_install_root(
+                "/home/me/.nvm/versions/node/v22.19.0/bin/kimi",
+                "/home/me/.nvm/versions/node/v22.19.0/lib/node_modules/@moonshot-ai/kimi-code/dist/main.mjs"
+            ),
+            None
+        );
+        assert_eq!(
+            kimi_native_install_root(
+                r"C:\Users\sc\AppData\Roaming\npm\kimi.cmd",
+                r"\\?\C:\Users\sc\AppData\Roaming\npm\kimi.cmd"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn legacy_kimi_native_update_reruns_the_installer() {
+        let install = |path: &str, version: &str| ToolInstallation {
+            path: path.to_string(),
+            version: Some(version.to_string()),
+            runnable: true,
+            error: None,
+            exited_with_error: false,
+            source: infer_install_source(Path::new(path)).to_string(),
+            is_path_default: true,
+            real: PathBuf::from(path),
+        };
+        let (path, root) = if cfg!(target_os = "windows") {
+            (
+                r"C:\Users\sc\.kimi-code\bin\kimi.exe",
+                r"C:\Users\sc\.kimi-code",
+            )
+        } else {
+            ("/home/me/.kimi-code/bin/kimi", "/home/me/.kimi-code")
+        };
+
+        // 0.43.0 之前 `upgrade --yes` 在非 TTY 下只打印提示就 exit 0（#9032）。
+        assert_eq!(
+            installs_anchored_command("kimi", &[install(path, "0.23.1")]),
+            Some(kimi_installer_update_command(root))
+        );
+        // 新版照旧走 CLI 自升级。
+        let current = installs_anchored_command("kimi", &[install(path, "2.4.0")]).unwrap();
+        assert!(current.contains("upgrade --yes"), "{current}");
+        assert_eq!(
+            installs_anchored_command("kimi", &[install(path, "0.43.0")]),
+            Some(current)
+        );
+        // Volta 的 shim 也是 `bin/kimi`，必须交给 Volta，不能让 installer 覆盖。
+        #[cfg(not(target_os = "windows"))]
+        {
+            let volta =
+                installs_anchored_command("kimi", &[install("/home/me/.volta/bin/kimi", "0.23.1")])
+                    .unwrap();
+            assert!(
+                volta.ends_with("volta install @moonshot-ai/kimi-code"),
+                "{volta}"
+            );
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn kimi_installer_update_command_targets_the_detected_dir() {
+        assert_eq!(
+            kimi_installer_update_command("/home/me/my kimi"),
+            format!("KIMI_INSTALL_DIR='/home/me/my kimi' {KIMI_INSTALL_UNIX}")
+        );
     }
 
     #[cfg(target_os = "windows")]
