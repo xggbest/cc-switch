@@ -1443,7 +1443,7 @@
     "keyFieldsHint": "默认模型（models.default）和它指向的模型表随供应商切换；其余是 Grok Build 全局设置，保存后对所有供应商生效。",
     "inactiveFieldsHint": "这些是旧版存进卡里的设置，现在切换不会写出去。点一下复制 TOML，需要时粘贴到上方。",
     "inactiveFieldCopied": "已复制",
-    "routeOnlySettingsHint": "以下两项只在路由模式下生效。"
+    "routeOnlySettingsHint": "以下设置只在路由模式下生效。"
   },
   "sessionManager": {
     "searchPlaceholder": "搜索标题、目录、首末消息或会话 ID",
@@ -1750,6 +1750,9 @@
     "openReleaseNotesFailed": "打开更新日志失败:"
   },
   "providerForm": {
+    "billingMultiplier": "供应商费用倍率",
+    "billingMultiplierHelp": "该供应商所有模型的参考价都乘以这个值，用来估算经本地路由的请求花了多少钱。0.5 即半价，留空为 1 倍。只影响之后的请求；不开路由（直连）时从会话记录导入的用量仍按 1 倍统计。",
+    "billingMultiplierInvalid": "请输入 0 到 1000 的数字，或留空使用 1 倍。",
     "nativeConfig": {
       "title": "配置文件 {{path}}（只显示这一家）",
       "hint": "按应用自己的格式显示这一家在文件里的部分，保存后写进这个文件；默认模型等全局设置不在这里。在这里写的注释不会保存。",
@@ -2245,7 +2248,7 @@
     "inactiveFieldCopied": "已复制",
     "upstreamFormatCopilotRouteHint": "所有模式都需要开启路由，由路由注入 Copilot 账号凭据；手动指定的协议模型不支持时会报错。",
     "maxOutputTokensWarning": "不要超过模型或网关的真实输出上限，否则会返回 400。",
-    "routeOnlySettingsHint": "以下两项只在路由、聚合模式下生效。"
+    "routeOnlySettingsHint": "以下设置只在路由、聚合模式下生效。"
   },
   "geminiConfig": {
     "envFile": "环境变量 (.env)",
@@ -3526,8 +3529,15 @@
       "downloadFailed": "下载失败：HTTP {{status}}",
       "httpError": "HTTP 错误 {{status}}",
       "http403": "GitHub 访问受限，可能是请求频率过高",
-      "http404": "仓库或分支不存在，请检查地址",
+      "http404": "仓库或分支不存在，请检查地址；私有仓库需要先在「管理技能仓库」里设置访问令牌",
       "http429": "请求过于频繁，请等待后重试",
+      "http401Token": "访问令牌无效或已过期，请在「管理技能仓库」里重新设置",
+      "http403Token": "访问令牌没有读取这个仓库的权限，或请求过于频繁",
+      "http404Token": "仓库或分支不存在，或访问令牌无权读取这个仓库",
+      "httpAuthRequired": "这个站点需要登录才能读取，请在「管理技能仓库」里为它设置访问令牌",
+      "invalidTokenHost": "站点无效：{{host}}。只填主机名，例如 gitlab.example.com",
+      "invalidRepoToken": "令牌格式不对：只能包含字母、数字和 - _ . ~ + / =，最长 {{limit}} 个字符",
+      "repoTokenStorageFailed": "无法读写 {{host}} 的访问令牌，请检查系统的凭据存储是否可用",
       "getHomeDirFailed": "无法获取用户主目录",
       "noSkillsInZip": "ZIP 文件中未找到技能（需包含 SKILL.md 文件）",
       "networkError": "网络错误",
@@ -3555,6 +3565,19 @@
       "empty": "暂无仓库",
       "invalidUrl": "无效的仓库 URL 格式",
       "httpsOnly": "GitLab / Gitea 仓库只支持 https 地址",
+      "token": {
+        "title": "访问令牌",
+        "description": "读取私有仓库时使用。令牌按站点保存在系统的凭据存储里（macOS 钥匙串、Windows 凭据管理器），不随云同步，只需要只读权限。",
+        "descriptionFile": "读取私有仓库时使用。令牌按站点保存在本机仅自己可读的文件里，不随云同步，只需要只读权限。",
+        "host": "站点",
+        "hostPlaceholder": "github.com 或 gitlab.example.com",
+        "value": "令牌",
+        "valuePlaceholder": "粘贴访问令牌",
+        "save": "保存令牌",
+        "empty": "还没有设置访问令牌",
+        "removeAria": "删除 {{host}} 的访问令牌",
+        "missingFields": "请填写站点和令牌"
+      },
       "addSuccess": "仓库 {{owner}}/{{name}} 已添加，识别到 {{count}} 个技能",
       "addFailed": "添加失败",
       "removeSuccess": "仓库 {{owner}}/{{name}} 已删除",
