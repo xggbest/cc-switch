@@ -29,6 +29,7 @@ import { GrokBoundAccountLine } from "@/components/providers/forms/GrokOfficialA
 import ClaudeAccountQuotaFooter from "@/components/ClaudeAccountQuotaFooter";
 import { claudePlanLabel } from "@/lib/claudePlan";
 import {
+  agyAuthStatusQuery,
   subscriptionKeys,
   useClaudeDefaultPlan,
 } from "@/lib/query/subscription";
@@ -439,10 +440,26 @@ export function ProviderCard({
     xaiAccount?.login && provider.name.includes(xaiAccount.login),
   );
   // 支持 agy 切号的平台上，Antigravity 官方卡查询所绑定账号的额度。
-  const agyBoundAccountId =
-    appId === "agy" && isOfficial && canSwitchAgyAccount()
-      ? resolveManagedAccountId(provider.meta, "agy_oauth")?.trim() || null
-      : null;
+  const canShowAgyAccount =
+    appId === "agy" && isOfficial && canSwitchAgyAccount();
+  const agyBoundAccountId = canShowAgyAccount
+    ? resolveManagedAccountId(provider.meta, "agy_oauth")?.trim() || null
+    : null;
+  const { data: agyAuthStatus } = useQuery({
+    ...agyAuthStatusQuery,
+    enabled: canShowAgyAccount,
+  });
+  // 禁用的 React Query observer 仍会返回已有缓存，非 Antigravity 官方卡必须显式屏蔽。
+  const activeAgyAccountId = canShowAgyAccount
+    ? agyAuthStatus?.default_account_id
+    : undefined;
+  const targetAgyAccountId = agyBoundAccountId ?? activeAgyAccountId;
+  const agyAccount =
+    canShowAgyAccount && targetAgyAccountId
+      ? agyAuthStatus?.accounts.find(
+          (account) => account.id === targetAgyAccountId,
+        )
+      : undefined;
   // 副标题末尾的套餐：读右边额度那个查询的缓存（键和各额度 footer 一致），额度查到才有。
   // Claude 官方卡另有写法（claudeDefaultPlanLabel / ClaudeBoundAccountLine）
   const quotaPlanKey: QueryKey | null = isCopilot
@@ -584,6 +601,15 @@ export function ProviderCard({
             {presentation.chips.map((chip) => (
               <CardChipBadge key={chip.key} chip={chip} />
             ))}
+            {agyAccount && agyAccount.id === activeAgyAccountId && (
+              <CardChipBadge
+                chip={{
+                  key: "agy-login",
+                  label: t("authCenter.inUseBy", { app: "agy" }),
+                  tone: "success",
+                }}
+              />
+            )}
             {presentation.showHealth && health && (
               <HealthChip
                 consecutiveFailures={health.consecutive_failures}
@@ -741,11 +767,19 @@ export function ProviderCard({
               note={manualNote}
               showPlan={usageEnabled}
             />
-          ) : agyModel ? (
+          ) : agyModel || agyAccount ? (
             <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-caption text-fg-2">
-              <span className="min-w-0 truncate" title={agyModel}>
-                {agyModel}
-              </span>
+              {agyAccount && (
+                <span className="min-w-0 truncate" title={agyAccount.login}>
+                  {agyAccount.login}
+                </span>
+              )}
+              {agyAccount && agyModel && <span aria-hidden="true">·</span>}
+              {agyModel && (
+                <span className="min-w-0 truncate" title={agyModel}>
+                  {agyModel}
+                </span>
+              )}
               {planSuffix("-ms-0.5")}
             </div>
           ) : isCopilot && copilotAccount ? (

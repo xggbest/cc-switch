@@ -44,6 +44,7 @@ import { extractErrorMessage } from "@/utils/errorUtils";
 import type { WorkBuddyQuota } from "@/lib/api/auth";
 import {
   useWorkBuddyAccountQuota,
+  creditExpiryLine,
   workbuddyCreditsLine,
   workbuddyExpiryLine,
 } from "@/components/providers/workbuddyQuota";
@@ -192,14 +193,12 @@ export function QuotaRefreshCell({
   const now = useNow(Boolean(queriedAt));
   const agoId = useId();
   const ago = queriedAt ? formatRelativeTime(queriedAt, now, t) : "";
-  const agoText = loading
-    ? t("authCenter.quota.updating", { defaultValue: "更新中…" })
-    : ago;
 
   return (
-    // 保留轻量最小宽度（见 .auth-quota-refresh），避免「刚刚」「更新中…」和未查询状态来回切换时把进度条推得横向抖动
+    // 刷新中不换文字（只转圈），格子宽度只随「x 分钟前」变；最小宽度放得下中日文最长的
+    // 「45 分钟前」（见 .auth-quota-refresh），时间跳档、刷新前后都不把额度条推得横向抖动
     <div className="auth-quota-refresh flex shrink-0 items-center justify-end gap-0.5 whitespace-nowrap text-caption text-fg-3">
-      <span id={agoId}>{agoText}</span>
+      <span id={agoId}>{ago}</span>
       <HoverTip
         content={t("authCenter.quota.refresh", { defaultValue: "刷新额度" })}
       >
@@ -210,7 +209,8 @@ export function QuotaRefreshCell({
             login,
           })}
           aria-disabled={loading}
-          aria-describedby={loading ? agoId : undefined}
+          aria-busy={loading}
+          aria-describedby={ago ? agoId : undefined}
           onClick={() => {
             if (!loading) onRefresh();
           }}
@@ -552,6 +552,13 @@ export function codebuddyQuotaState(
   const showUsed = display === "used";
   const value =
     quota.remaining <= 0 ? t("quota.usedUp") : showUsed ? used : remaining;
+  // 和 WorkBuddy 一样：最早到期的积分另起一行（同一套计费后端）
+  const expiry = creditExpiryLine(
+    t,
+    quota.expiries,
+    locale,
+    "codebuddy_expiry",
+  );
   return {
     kind: "rows",
     rows: [
@@ -573,6 +580,7 @@ export function codebuddyQuotaState(
           }),
         },
       },
+      ...(expiry ? [{ label: t("workbuddy.quota.expiry"), line: expiry }] : []),
     ],
   };
 }
