@@ -2780,6 +2780,7 @@
       "duration": "所要時間",
       "durationEstimated": "所要時間（推定）",
       "speedTooFew": "出力が 100 トークン未満のため速度は出しません",
+      "speedBurst": "バッファ後の一括到着とみられるため速度は出しません",
       "speedEstimateTooFew": "出力が 200 トークン未満のため速度は推定しません",
       "noTimingSession": "セッションログには計測データがありません",
       "noFirstToken": "最初のトークンの計測がないため速度は出しません",
@@ -4702,6 +4703,7 @@
     },
     "updatedAt": "{{time}}に更新",
     "clickToRefresh": "クリックで再取得",
+    "manualIdle": "更新をクリックして残量を取得",
     "resetCredits": {
       "label": "リセット",
       "left": "リセット 残り {{count}} 回",
@@ -4981,9 +4983,9 @@
       "disableAria": "選択した {{count}} 件の Skill をこのアプリでオフ",
       "uninstall": "アンインストール"
     },
-    "piColumnTitle": "Pi は ~/.pi/agent/skills にそのフォルダーがあるかで判定します",
+    "piColumnTitle": "Pi は ~/.agents/skills も読み込むため、未選択でもそのパスにあるスキルはそのまま利用できます",
     "piHelpTitle": "Pi の有効の判定",
-    "piHelp": "~/.pi/agent/skills にそのフォルダーがあるかどうかです。",
+    "piHelp": "Pi は ~/.agents/skills も読み込むため、未選択でもそのパスにあるスキルはそのまま利用できます。",
     "pop": {
       "onlyApp": "{{app}} で有効なものだけ表示",
       "showAll": "すべての Skill を表示"
@@ -5357,6 +5359,10 @@
     "openBrowser": {
       "title": "ログイン時にブラウザを自動で開く",
       "description": "オフにするとログインリンクをコピーするだけになり、使うブラウザを自分で選べます。アカウントごとに独立したブラウザ環境を使う場合に便利です。"
+    },
+    "autoQuota": {
+      "title": "残量を自動で取得",
+      "description": "オフにすると、公式アカウントの残量は更新をクリックしたときだけ取得します。認証センターを開いたとき、カードの定期更新、トレイへのホバーでは取得しません。DeepSeek アカウントの残高はログイン状態と一緒に表示されるため、このスイッチの影響を受けません。"
     }
   },
   "kimi": {

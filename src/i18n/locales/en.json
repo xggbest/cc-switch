@@ -2780,6 +2780,7 @@
       "duration": "Duration",
       "durationEstimated": "Duration (estimated)",
       "speedTooFew": "Under 100 output tokens, so no speed",
+      "speedBurst": "Arrived in a buffered burst, so no speed",
       "speedEstimateTooFew": "Under 200 output tokens, so no estimate",
       "noTimingSession": "Session logs have no timing data",
       "noFirstToken": "No first-token timing, so no speed",
@@ -4702,6 +4703,7 @@
     },
     "updatedAt": "Updated {{time}}",
     "clickToRefresh": "Click to check again",
+    "manualIdle": "Click refresh to query quota",
     "resetCredits": {
       "label": "Resets",
       "left": "Resets left: {{count}}",
@@ -4981,9 +4983,9 @@
       "disableAria": "Turn off the {{count}} selected Skills in",
       "uninstall": "Uninstall"
     },
-    "piColumnTitle": "Pi counts a Skill as enabled when its folder exists in ~/.pi/agent/skills",
+    "piColumnTitle": "Pi also reads ~/.agents/skills, so unchecked skills in that path are still directly available",
     "piHelpTitle": "How Pi counts as enabled",
-    "piHelp": "Whether the folder exists in ~/.pi/agent/skills.",
+    "piHelp": "Pi also reads ~/.agents/skills, so unchecked skills in that path are still directly available.",
     "pop": {
       "onlyApp": "Show only ones enabled in {{app}}",
       "showAll": "Show all Skills"
@@ -5357,6 +5359,10 @@
     "openBrowser": {
       "title": "Open the browser when signing in",
       "description": "Turn this off to only copy the sign-in link and open it in a browser of your choice — handy when you keep accounts in separate browser profiles."
+    },
+    "autoQuota": {
+      "title": "Query quota automatically",
+      "description": "When off, official account quotas are only queried when you click refresh: opening the Auth Center, scheduled card refreshes and hovering the tray won't query them. DeepSeek account balances are shown with the sign-in status and aren't affected by this switch."
     }
   },
   "kimi": {

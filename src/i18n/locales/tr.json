@@ -2709,6 +2709,7 @@
       "duration": "Süre",
       "durationEstimated": "Süre (tahmini)",
       "speedTooFew": "100 çıkış tokenunun altında, yani hız yok",
+      "speedBurst": "Arabelleğe alınmış ani aktarım olduğu için hız yok",
       "speedEstimateTooFew": "Çıkış tokenu 200'ün altında olduğundan tahmin yok",
       "noTimingSession": "Oturum günlüklerinde zamanlama verisi yok",
       "noFirstToken": "İlk token zamanlaması yok, dolayısıyla hız yok",
@@ -4631,6 +4632,7 @@
     },
     "updatedAt": "{{time}} tarihinde güncellendi",
     "clickToRefresh": "Tekrar kontrol etmek için tıklayın",
+    "manualIdle": "Kotayı sorgulamak için yenile düğmesine tıklayın",
     "resetCredits": {
       "label": "Sıfırlanma",
       "left": "Kalan sıfırlama: {{count}}",
@@ -4910,9 +4912,9 @@
       "disableAria": "{{count}}'de seçilen Becerileri kapatın",
       "uninstall": "Kaldır"
     },
-    "piColumnTitle": "Pi, klasörü ~/.pi/agent/skills konumunda mevcut olduğunda bir Beceriyi etkin olarak sayar",
+    "piColumnTitle": "Pi ayrıca ~/.agents/skills konumunu da okur; bu nedenle işaretlenmemiş olsa bile bu yoldaki beceriler doğrudan kullanılabilir",
     "piHelpTitle": "Pi nasıl etkin olarak sayılır?",
-    "piHelp": "Klasörün ~/.pi/agent/skills konumunda olup olmadığı.",
+    "piHelp": "Pi ayrıca ~/.agents/skills konumunu da okur; bu nedenle işaretlenmemiş olsa bile bu yoldaki beceriler doğrudan kullanılabilir.",
     "pop": {
       "onlyApp": "Yalnızca {{app}}'de etkin olanları göster",
       "showAll": "Tüm Becerileri Göster"
@@ -5286,6 +5288,10 @@
     "openBrowser": {
       "title": "Oturum açarken tarayıcıyı aç",
       "description": "Yalnızca oturum açma bağlantısını kopyalayıp istediğiniz tarayıcıda açmak için kapatın; hesapları ayrı tarayıcı profillerinde tutuyorsanız kullanışlıdır."
+    },
+    "autoQuota": {
+      "title": "Kotayı otomatik sorgula",
+      "description": "Kapalıyken resmi hesap kotaları yalnızca yenile düğmesine tıkladığınızda sorgulanır: Yetkilendirme Merkezi’ni açmak, kartların zamanlanmış yenilemeleri ve tepsi simgesinin üzerine gelmek kotaları sorgulamaz. DeepSeek hesap bakiyeleri oturum durumuyla birlikte gösterildiğinden bu anahtardan etkilenmez."
     }
   },
   "kimi": {

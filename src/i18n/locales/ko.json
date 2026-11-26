@@ -2775,6 +2775,7 @@
       "duration": "소요 시간",
       "durationEstimated": "소요 시간 (추정)",
       "speedTooFew": "출력이 100토큰 미만이므로 속도를 계산하지 않습니다.",
+      "speedBurst": "버퍼링 후 한 번에 전송된 것으로 보여 속도를 계산하지 않습니다.",
       "speedEstimateTooFew": "출력이 200토큰 미만이므로 속도를 추정하지 않습니다.",
       "noTimingSession": "세션 로그에는 타이밍 데이터가 없습니다.",
       "noFirstToken": "첫 토큰 시간 데이터가 없어 속도를 계산하지 않습니다.",
@@ -4702,6 +4703,7 @@
     },
     "updatedAt": "{{time}} 업데이트됨",
     "clickToRefresh": "다시 확인하려면 클릭하세요",
+    "manualIdle": "할당량을 조회하려면 새로고침을 클릭하세요",
     "resetCredits": {
       "label": "초기화",
       "left": "남은 초기화 횟수: {{count}}회",
@@ -4981,9 +4983,9 @@
       "disableAria": "선택한 스킬 {{count}}개를 비활성화할 앱",
       "uninstall": "제거"
     },
-    "piColumnTitle": "Pi는 ~/.pi/agent/skills에 폴더가 있으면 해당 스킬이 활성화된 것으로 간주합니다",
+    "piColumnTitle": "Pi는 ~/.agents/skills도 읽으므로 선택되지 않았더라도 해당 경로에 있는 스킬은 바로 사용할 수 있습니다",
     "piHelpTitle": "Pi의 활성화 판단 기준",
-    "piHelp": "~/.pi/agent/skills에 폴더가 있는지 여부입니다.",
+    "piHelp": "Pi는 ~/.agents/skills도 읽으므로 선택되지 않았더라도 해당 경로에 있는 스킬은 바로 사용할 수 있습니다.",
     "pop": {
       "onlyApp": "{{app}}에서 활성화된 항목만 표시",
       "showAll": "모든 스킬 표시"
@@ -5357,6 +5359,10 @@
     "openBrowser": {
       "title": "로그인 시 브라우저 자동 열기",
       "description": "이 옵션을 끄면 로그인 링크만 복사되며, 원하는 브라우저에서 직접 열 수 있습니다. 별도의 브라우저 프로필로 여러 계정을 관리할 때 유용합니다."
+    },
+    "autoQuota": {
+      "title": "할당량 자동 조회",
+      "description": "끄면 새로고침을 클릭할 때만 공식 계정 할당량을 조회합니다. 인증 센터 열기, 카드 예약 새로고침 및 트레이 아이콘 마우스오버 시에는 조회하지 않습니다. DeepSeek 계정 잔액은 로그인 상태와 함께 표시되므로 이 스위치의 영향을 받지 않습니다."
     }
   },
   "kimi": {
